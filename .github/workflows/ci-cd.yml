@@ -170,29 +170,16 @@ jobs:
         run: |
           echo "🚀 Deploying with docker compose..."
           
-          ssh $VPS_USER@$VPS_HOST << ENDSSH
-            cd ~/genfity/genfity-order-service
-            
-            # Force pull latest changes (override local, no conflicts)
-            git fetch origin main
-            git reset --hard origin/main
-            
-            # Login to GHCR
-            echo "$GHCR_TOKEN" | sudo docker login ghcr.io -u mygads --password-stdin
-            
-            # Set image and deploy using docker compose
-            export IMAGE=ghcr.io/mygads/genfity-order-service:latest
-            
-            # Pull and recreate
-            sudo -E docker compose pull
-            sudo -E docker compose up -d --force-recreate
-            
-            # Cleanup old images
-            echo "🧹 Cleaning up..."
-            sudo docker image prune -af --filter "until=24h" 2>/dev/null || true
-            
-            echo "✅ Deployment complete!"
-          ENDSSH
+          ssh $VPS_USER@$VPS_HOST 'cd ~/genfity/genfity-order-service && \
+            git fetch origin main && \
+            git reset --hard origin/main && \
+            echo "${{ secrets.GHCR_TOKEN }}" | sudo docker login ghcr.io -u mygads --password-stdin && \
+            export IMAGE=ghcr.io/mygads/genfity-order-service:latest && \
+            sudo -E docker compose pull && \
+            sudo -E docker compose up -d --force-recreate && \
+            echo "🧹 Cleaning up..." && \
+            sudo docker image prune -af --filter "until=24h" 2>/dev/null || true && \
+            echo "✅ Deployment complete!"'
 
       - name: Health Check
         env:
@@ -202,21 +189,18 @@ jobs:
           echo "🏥 Running health check..."
           sleep 15
           
-          ssh $VPS_USER@$VPS_HOST << 'ENDSSH'
-            for i in {1..5}; do
-              if curl -sf http://localhost:8086/health > /dev/null 2>&1; then
-                echo "✅ Health check passed!"
-                sudo docker ps | grep genfity-order-service
-                exit 0
-              fi
-              echo "Attempt $i failed, retrying..."
-              sleep 5
-            done
-            
-            echo "❌ Health check failed!"
-            sudo docker logs genfity-order-service --tail 50
-            exit 1
-          ENDSSH
+          ssh $VPS_USER@$VPS_HOST 'for i in 1 2 3 4 5; do \
+            if curl -sf http://localhost:8086/health > /dev/null 2>&1; then \
+              echo "✅ Health check passed!"; \
+              sudo docker ps | grep genfity-order-service; \
+              exit 0; \
+            fi; \
+            echo "Attempt $i failed, retrying..."; \
+            sleep 5; \
+          done; \
+          echo "❌ Health check failed!"; \
+          sudo docker logs genfity-order-service --tail 50; \
+          exit 1'
 
       - name: Generate summary
         if: success()
@@ -249,8 +233,6 @@ jobs:
           VPS_HOST: ${{ secrets.VPS_HOST }}
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
-          ssh $VPS_USER@$VPS_HOST << 'ENDSSH'
-            echo "🧹 Running scheduled cleanup..."
-            sudo docker system prune -f --filter "until=24h"
-            echo "✅ Cleanup complete!"
-          ENDSSH
+          ssh $VPS_USER@$VPS_HOST 'echo "🧹 Running scheduled cleanup..." && \
+            sudo docker system prune -f --filter "until=24h" && \
+            echo "✅ Cleanup complete!"'
