@@ -1,0 +1,47 @@
+# ===================================================================================
+# GENFITY ORDER SERVICE (Go) - DOCKER COMPOSE
+# ===================================================================================
+#
+# Go API + WebSocket server for high-frequency order operations.
+# Provides realtime order updates via PostgreSQL LISTEN/NOTIFY.
+#
+# USAGE:
+#   Local test:  docker compose up -d --build
+#   CI/CD:       IMAGE=ghcr.io/mygads/genfity-order-service:latest docker compose up -d --pull always
+#
+# IMPORTANT: This service needs DIRECT PostgreSQL connection (not PgBouncer)
+#            because it uses LISTEN/NOTIFY for realtime updates.
+#
+# ===================================================================================
+
+services:
+  genfity-order-service:
+    image: ${IMAGE:-genfity-order-service:local}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: genfity-order-service
+    ports:
+      - "127.0.0.1:8086:8086"
+    env_file:
+      - .env
+    networks:
+      - genfity-network
+      - infra-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:8086/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  genfity-network:
+    external: true
+    name: genfity-network
+  infra-network:
+    external: true
+    name: infra-network
