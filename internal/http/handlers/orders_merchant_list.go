@@ -130,7 +130,7 @@ func (h *Handler) MerchantOrdersList(w http.ResponseWriter, r *http.Request) {
 	whereSQL := strings.Join(whereClauses, " and ")
 
 	countQuery := `
-		select count(*)
+		select count(distinct o.id)
 		from orders o
 		left join payments p on p.order_id = o.id
 		where ` + whereSQL

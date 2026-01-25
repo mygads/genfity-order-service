@@ -177,8 +177,8 @@ func (h *Handler) MerchantCustomerDisplayStatePut(w http.ResponseWriter, r *http
 
 		payloadBytes, _ := json.Marshal(basePayload)
 		_, err := h.DB.Exec(ctx, `
-			insert into customer_display_state (merchant_id, mode, is_locked, payload)
-			values ($1, $2::"CustomerDisplayMode", $3, $4)
+			insert into customer_display_state (merchant_id, mode, is_locked, payload, created_at, updated_at)
+			values ($1, $2::"CustomerDisplayMode", $3, $4, now(), now())
 			on conflict (merchant_id)
 			do update set mode = excluded.mode, payload = excluded.payload, updated_at = now()
 		`, *authCtx.MerchantID, mode, existingLocked, payloadBytes)
@@ -226,8 +226,8 @@ func (h *Handler) MerchantCustomerDisplayStatePut(w http.ResponseWriter, r *http
 	}
 
 	_, err := h.DB.Exec(ctx, `
-		insert into customer_display_state (merchant_id, mode, is_locked, payload)
-		values ($1, $2::"CustomerDisplayMode", $3, $4)
+		insert into customer_display_state (merchant_id, mode, is_locked, payload, created_at, updated_at)
+		values ($1, $2::"CustomerDisplayMode", $3, $4, now(), now())
 		on conflict (merchant_id)
 		do update set mode = excluded.mode, payload = excluded.payload, is_locked = excluded.is_locked, updated_at = now()
 	`, *authCtx.MerchantID, mode, isLocked, payloadBytes)

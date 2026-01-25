@@ -299,8 +299,8 @@ func (h *Handler) createReservation(ctx context.Context, merchantID int64, custo
 
 	var reservationID int64
 	if err := h.DB.QueryRow(ctx, `
-		insert into reservations (merchant_id, customer_id, party_size, reservation_date, reservation_time, notes, preorder, status)
-		values ($1,$2,$3,$4,$5,$6,$7::jsonb,'PENDING')
+		insert into reservations (merchant_id, customer_id, party_size, reservation_date, reservation_time, notes, preorder, status, created_at, updated_at)
+		values ($1,$2,$3,$4,$5,$6,$7::jsonb,'PENDING', now(), now())
 		returning id
 	`, merchantID, customerID, partySize, reservationDate, reservationTime, nullIfEmptyPtr(notes), preorderValue).Scan(&reservationID); err != nil {
 		return 0, err

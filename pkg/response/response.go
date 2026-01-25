@@ -20,8 +20,9 @@ func Success(w http.ResponseWriter, data any) {
 
 func Error(w http.ResponseWriter, status int, code string, message string) {
 	JSON(w, status, map[string]any{
-		"success": false,
-		"error":   code,
-		"message": message,
+		"success":    false,
+		"error":      code,
+		"message":    message,
+		"statusCode": status,
 	})
 }

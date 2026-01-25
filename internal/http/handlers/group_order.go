@@ -609,8 +609,8 @@ func (h *Handler) PublicGroupOrderJoin(w http.ResponseWriter, r *http.Request) {
 
 	var participantID int64
 	if err := h.DB.QueryRow(ctx, `
-		insert into group_order_participants (session_id, customer_id, name, device_id, is_host, cart_items, subtotal)
-		values ($1,$2,$3,$4,false,'[]',0)
+		insert into group_order_participants (session_id, customer_id, name, device_id, is_host, cart_items, subtotal, joined_at, updated_at)
+		values ($1,$2,$3,$4,false,'[]',0,now(),now())
 		returning id
 	`, sessionID, customerID, name, deviceID).Scan(&participantID); err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to join group order session")
