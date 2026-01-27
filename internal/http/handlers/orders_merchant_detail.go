@@ -331,6 +331,7 @@ func (h *Handler) fetchMerchantOrderDetail(ctx context.Context, merchantID, orde
 		  o.created_at, o.updated_at, o.placed_at, o.completed_at, o.cancelled_at, o.actual_ready_at,
 		  o.edited_at, o.edited_by_user_id,
 		  p.id, p.status, p.payment_method, p.amount, p.paid_at, p.paid_by_user_id,
+		  p.customer_paid_at, p.customer_proof_url, p.customer_proof_uploaded_at, p.customer_payment_note, p.customer_proof_meta,
 		  pu.id, pu.name, pu.email,
 		  r.id, r.party_size, r.reservation_date, r.reservation_time, r.table_number, r.status, r.created_at, r.updated_at,
 		  c.id, c.name, c.email, c.phone,
@@ -357,6 +358,11 @@ func (h *Handler) fetchMerchantOrderDetail(ctx context.Context, merchantID, orde
 		paymentAmount          pgtype.Numeric
 		paidAt                 pgtype.Timestamptz
 		paidByUserID           pgtype.Int8
+		customerPaidAt         pgtype.Timestamptz
+		customerProofURL       pgtype.Text
+		customerProofUploaded  pgtype.Timestamptz
+		customerPaymentNote    pgtype.Text
+		customerProofMeta      []byte
 		paidByID               pgtype.Int8
 		paidByName             pgtype.Text
 		paidByEmail            pgtype.Text
@@ -462,6 +468,11 @@ func (h *Handler) fetchMerchantOrderDetail(ctx context.Context, merchantID, orde
 		&paymentAmount,
 		&paidAt,
 		&paidByUserID,
+		&customerPaidAt,
+		&customerProofURL,
+		&customerProofUploaded,
+		&customerPaymentNote,
+		&customerProofMeta,
 		&paidByID,
 		&paidByName,
 		&paidByEmail,
@@ -600,6 +611,14 @@ func (h *Handler) fetchMerchantOrderDetail(ctx context.Context, merchantID, orde
 	}
 
 	if paymentID.Valid {
+		var proofMeta any
+		if len(customerProofMeta) > 0 {
+			var parsed map[string]any
+			if err := json.Unmarshal(customerProofMeta, &parsed); err == nil {
+				proofMeta = parsed
+			}
+		}
+
 		payment := map[string]any{
 			"id":            paymentID.Int64,
 			"status":        paymentStatus.String,
@@ -617,6 +636,31 @@ func (h *Handler) fetchMerchantOrderDetail(ctx context.Context, merchantID, orde
 				}
 				return nil
 			}(),
+			"customerPaidAt": func() any {
+				if customerPaidAt.Valid {
+					return customerPaidAt.Time
+				}
+				return nil
+			}(),
+			"customerProofUrl": func() any {
+				if customerProofURL.Valid {
+					return customerProofURL.String
+				}
+				return nil
+			}(),
+			"customerProofUploadedAt": func() any {
+				if customerProofUploaded.Valid {
+					return customerProofUploaded.Time
+				}
+				return nil
+			}(),
+			"customerPaymentNote": func() any {
+				if customerPaymentNote.Valid {
+					return customerPaymentNote.String
+				}
+				return nil
+			}(),
+			"customerProofMeta": proofMeta,
 		}
 		if paidByID.Valid {
 			payment["paidBy"] = map[string]any{

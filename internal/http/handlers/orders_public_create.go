@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -40,6 +41,7 @@ type publicOrderRequest struct {
 	Items                  []publicOrderItem `json:"items"`
 	Notes                  *string           `json:"notes"`
 	PaymentMethod          *string           `json:"paymentMethod"`
+	PaymentAccountID       *string           `json:"paymentAccountId"`
 	VoucherCode            *string           `json:"voucherCode"`
 }
 
@@ -80,6 +82,8 @@ type publicOrderMerchant struct {
 	TakeawayScheduleEnd         *string
 	DeliveryScheduleStart       *string
 	DeliveryScheduleEnd         *string
+	PaymentSettings             publicPaymentSettings
+	PaymentAccounts             []publicPaymentAccount
 }
 
 type publicOrderCreateResponse struct {
@@ -245,9 +249,9 @@ func (h *Handler) PublicOrderCreate(w http.ResponseWriter, r *http.Request) {
 
 	totalAfterDiscount := round2(math.Max(0, totalAmount-discountAmount))
 
-	paymentMethod := resolvePublicPaymentMethod(orderType, body.PaymentMethod)
-	if paymentMethod == "" {
-		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid payment method")
+	paymentMethod, customerPaymentNote, customerProofMeta, err := resolvePublicPaymentMethod(orderType, body.PaymentMethod, body.PaymentAccountID, merchant.PaymentSettings, merchant.PaymentAccounts)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", err.Error())
 		return
 	}
 
@@ -257,7 +261,7 @@ func (h *Handler) PublicOrderCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	orderID, err := h.createPublicOrder(ctx, merchant, orderType, orderNumber, customerID, body, orderItems, subtotal, taxAmount, serviceChargeAmount, packagingFeeAmount, deliveryFeeAmount, deliveryDistance, totalAfterDiscount, isScheduled, scheduledTime, paymentMethod, voucherDiscount)
+	orderID, err := h.createPublicOrder(ctx, merchant, orderType, orderNumber, customerID, body, orderItems, subtotal, taxAmount, serviceChargeAmount, packagingFeeAmount, deliveryFeeAmount, deliveryDistance, totalAfterDiscount, isScheduled, scheduledTime, paymentMethod, customerPaymentNote, customerProofMeta, voucherDiscount)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to create order")
 		return
@@ -487,6 +491,13 @@ func (h *Handler) loadPublicOrderMerchant(ctx context.Context, code string) (pub
 	merchant.DeliveryScheduleEnd = textPtr(deliveryScheduleEnd)
 	merchant.IsPerDayModeScheduleEnabled = isPerDayModeSchedule
 
+	paymentSettings, paymentAccounts, err := h.fetchPublicPaymentConfig(ctx, merchant.ID)
+	if err != nil {
+		return publicOrderMerchant{}, availableTimesMerchant{}, groupOrderDeliveryConfig{}, err
+	}
+	merchant.PaymentSettings = paymentSettings
+	merchant.PaymentAccounts = paymentAccounts
+
 	if len(featuresBytes) > 0 {
 		var features map[string]any
 		if err := json.Unmarshal(featuresBytes, &features); err == nil {
@@ -668,6 +679,8 @@ func (h *Handler) createPublicOrder(
 	isScheduled bool,
 	scheduledTime string,
 	paymentMethod string,
+	customerPaymentNote *string,
+	customerProofMeta map[string]any,
 	voucherDiscount *voucher.DiscountResult,
 ) (int64, error) {
 	tx, err := h.DB.Begin(ctx)
@@ -796,10 +809,15 @@ func (h *Handler) createPublicOrder(
 		}
 	}
 
+	var proofMeta any
+	if len(customerProofMeta) > 0 {
+		proofMeta = customerProofMeta
+	}
+
 	if _, err := tx.Exec(ctx, `
-		insert into payments (order_id, amount, payment_method, status, updated_at)
-		values ($1,$2,$3,'PENDING', now())
-    `, orderID, totalAmount, paymentMethod); err != nil {
+		insert into payments (order_id, amount, payment_method, status, customer_payment_note, customer_proof_meta, updated_at)
+		values ($1,$2,$3,'PENDING',$4,$5, now())
+    `, orderID, totalAmount, paymentMethod, nullIfEmptyPtr(customerPaymentNote), proofMeta); err != nil {
 		return 0, err
 	}
 
@@ -844,7 +862,7 @@ func (h *Handler) fetchPublicOrderDetailByID(ctx context.Context, orderID int64)
           o.edited_at,
           m.name, m.currency, m.code,
           c.name,
-          p.status, p.payment_method, p.amount, p.paid_at,
+					p.status, p.payment_method, p.amount, p.paid_at, p.customer_paid_at, p.customer_proof_url, p.customer_proof_uploaded_at, p.customer_payment_note, p.customer_proof_meta,
           r.status, r.party_size, r.reservation_date, r.reservation_time, r.table_number
         from orders o
         join merchants m on m.id = o.merchant_id
@@ -865,6 +883,11 @@ func (h *Handler) fetchPublicOrderDetailByID(ctx context.Context, orderID int64)
 		pMethod          pgtype.Text
 		pAmount          pgtype.Numeric
 		pPaidAt          pgtype.Timestamptz
+		pCustomerPaidAt  pgtype.Timestamptz
+		pProofUrl        pgtype.Text
+		pProofUploadedAt pgtype.Timestamptz
+		pPaymentNote     pgtype.Text
+		pProofMeta       []byte
 		rStatus          pgtype.Text
 		rParty           pgtype.Int4
 		rDate            pgtype.Text
@@ -911,6 +934,11 @@ func (h *Handler) fetchPublicOrderDetailByID(ctx context.Context, orderID int64)
 		&pMethod,
 		&pAmount,
 		&pPaidAt,
+		&pCustomerPaidAt,
+		&pProofUrl,
+		&pProofUploadedAt,
+		&pPaymentNote,
+		&pProofMeta,
 		&rStatus,
 		&rParty,
 		&rDate,
@@ -947,16 +975,53 @@ func (h *Handler) fetchPublicOrderDetailByID(ctx context.Context, orderID int64)
 		if pPaidAt.Valid {
 			paidAtPtr = &paidAt
 		}
+		var customerPaidAtPtr *time.Time
+		if pCustomerPaidAt.Valid {
+			value := pCustomerPaidAt.Time
+			customerPaidAtPtr = &value
+		}
+		var proofUploadedAtPtr *time.Time
+		if pProofUploadedAt.Valid {
+			value := pProofUploadedAt.Time
+			proofUploadedAtPtr = &value
+		}
+		var proofUrlPtr *string
+		if pProofUrl.Valid {
+			value := pProofUrl.String
+			proofUrlPtr = &value
+		}
+		var paymentNotePtr *string
+		if pPaymentNote.Valid {
+			value := pPaymentNote.String
+			paymentNotePtr = &value
+		}
+		var proofMeta map[string]any
+		if len(pProofMeta) > 0 {
+			var parsed map[string]any
+			if err := json.Unmarshal(pProofMeta, &parsed); err == nil {
+				proofMeta = parsed
+			}
+		}
 		detail.Payment = &struct {
-			Status        *string    `json:"status"`
-			PaymentMethod *string    `json:"paymentMethod"`
-			Amount        *float64   `json:"amount"`
-			PaidAt        *time.Time `json:"paidAt"`
+			Status                  *string        `json:"status"`
+			PaymentMethod           *string        `json:"paymentMethod"`
+			Amount                  *float64       `json:"amount"`
+			PaidAt                  *time.Time     `json:"paidAt"`
+			CustomerPaidAt          *time.Time     `json:"customerPaidAt"`
+			CustomerProofUrl        *string        `json:"customerProofUrl"`
+			CustomerProofUploadedAt *time.Time     `json:"customerProofUploadedAt"`
+			CustomerPaymentNote     *string        `json:"customerPaymentNote"`
+			CustomerProofMeta       map[string]any `json:"customerProofMeta"`
 		}{
-			Status:        &status,
-			PaymentMethod: &method,
-			Amount:        &amount,
-			PaidAt:        paidAtPtr,
+			Status:                  &status,
+			PaymentMethod:           &method,
+			Amount:                  &amount,
+			PaidAt:                  paidAtPtr,
+			CustomerPaidAt:          customerPaidAtPtr,
+			CustomerProofUrl:        proofUrlPtr,
+			CustomerProofUploadedAt: proofUploadedAtPtr,
+			CustomerPaymentNote:     paymentNotePtr,
+			CustomerProofMeta:       proofMeta,
 		}
 	}
 
@@ -995,29 +1060,103 @@ func isValidHHMM(value string) bool {
 	return err == nil
 }
 
-func resolvePublicPaymentMethod(orderType string, requested *string) string {
+func resolvePublicPaymentMethod(orderType string, requested *string, requestedAccountID *string, settings publicPaymentSettings, accounts []publicPaymentAccount) (string, *string, map[string]any, error) {
 	paymentMethod := ""
 	if requested != nil {
 		paymentMethod = strings.TrimSpace(strings.ToUpper(*requested))
 	}
 
+	requestedAccount := ""
+	if requestedAccountID != nil {
+		requestedAccount = strings.TrimSpace(*requestedAccountID)
+	}
+
+	payAtCashierEnabled := settings.PayAtCashierEnabled
+	manualTransferEnabled := settings.ManualTransferEnabled
+	qrisEnabled := settings.QrisEnabled && settings.QrisImageUrl != nil && strings.TrimSpace(*settings.QrisImageUrl) != ""
+
+	allowedMethods := map[string]bool{}
 	if orderType == "DELIVERY" {
-		if paymentMethod == "" {
-			return "CASH_ON_DELIVERY"
+		if payAtCashierEnabled {
+			allowedMethods["CASH_ON_DELIVERY"] = true
 		}
-		if paymentMethod == "CASH_ON_DELIVERY" || paymentMethod == "ONLINE" {
-			return paymentMethod
+	} else {
+		if payAtCashierEnabled {
+			allowedMethods["CASH_ON_COUNTER"] = true
+			allowedMethods["CARD_ON_COUNTER"] = true
 		}
-		return ""
+	}
+	if manualTransferEnabled {
+		allowedMethods["MANUAL_TRANSFER"] = true
+	}
+	if qrisEnabled {
+		allowedMethods["QRIS"] = true
+	}
+	if manualTransferEnabled || qrisEnabled {
+		allowedMethods["ONLINE"] = true
+	}
+
+	defaultMethod := "CASH_ON_COUNTER"
+	if orderType == "DELIVERY" {
+		defaultMethod = "CASH_ON_DELIVERY"
+	}
+	if !payAtCashierEnabled {
+		if manualTransferEnabled {
+			defaultMethod = "MANUAL_TRANSFER"
+		} else if qrisEnabled {
+			defaultMethod = "QRIS"
+		}
 	}
 
 	if paymentMethod == "" {
-		return "CASH_ON_COUNTER"
+		paymentMethod = defaultMethod
 	}
-	if paymentMethod == "CASH_ON_COUNTER" || paymentMethod == "CARD_ON_COUNTER" {
-		return paymentMethod
+	if paymentMethod == "ONLINE" {
+		if manualTransferEnabled {
+			paymentMethod = "MANUAL_TRANSFER"
+		} else if qrisEnabled {
+			paymentMethod = "QRIS"
+		}
 	}
-	return ""
+
+	if !allowedMethods[paymentMethod] {
+		return "", nil, nil, errInvalid("Invalid payment method")
+	}
+
+	var paymentNote *string
+	var paymentMeta map[string]any
+
+	if paymentMethod == "MANUAL_TRANSFER" {
+		if len(accounts) == 0 {
+			return "", nil, nil, errInvalid("No transfer accounts are available")
+		}
+		if requestedAccount != "" {
+			var matched *publicPaymentAccount
+			for i := range accounts {
+				if strconv.FormatInt(accounts[i].ID, 10) == requestedAccount {
+					matched = &accounts[i]
+					break
+				}
+			}
+			if matched == nil {
+				return "", nil, nil, errInvalid("Invalid transfer account")
+			}
+			paymentMeta = map[string]any{
+				"accountId":     strconv.FormatInt(matched.ID, 10),
+				"type":          matched.Type,
+				"providerName":  matched.ProviderName,
+				"accountName":   matched.AccountName,
+				"accountNumber": matched.AccountNumber,
+				"bsb":           matched.BSB,
+			}
+		}
+	}
+
+	if paymentMethod == "QRIS" && !qrisEnabled {
+		return "", nil, nil, errInvalid("QRIS is not available")
+	}
+
+	return paymentMethod, paymentNote, paymentMeta, nil
 }
 
 func deliveryStatusForOrder(orderType string) *string {

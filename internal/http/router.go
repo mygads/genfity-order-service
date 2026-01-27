@@ -63,6 +63,8 @@ func NewRouter(db *pgxpool.Pool, logger *zap.Logger, cfg config.Config, queueCli
 	r.Route("/api/public", func(r chi.Router) {
 		r.Post("/orders", h.PublicOrderCreate)
 		r.Get("/orders/{orderNumber}", h.PublicOrderDetail)
+		r.Post("/orders/{orderNumber}/upload-proof", h.PublicOrderUploadProof)
+		r.Post("/orders/{orderNumber}/confirm-payment", h.PublicOrderConfirmPayment)
 		r.Get("/orders/{orderNumber}/wait-time", h.PublicOrderWaitTime)
 		r.Get("/orders/{orderNumber}/group-details", h.PublicOrderGroupDetails)
 		r.Get("/orders/{orderNumber}/feedback", h.PublicOrderFeedbackGet)
@@ -133,6 +135,15 @@ func NewRouter(db *pgxpool.Pool, logger *zap.Logger, cfg config.Config, queueCli
 		r.Get("/customer-display/state", h.MerchantCustomerDisplayStateGet)
 		r.Put("/customer-display/state", h.MerchantCustomerDisplayStatePut)
 		r.Get("/customer-display/sessions", h.MerchantCustomerDisplaySessions)
+		r.Post("/upload-logo", h.MerchantUploadLogo)
+		r.Post("/upload/qris", h.MerchantUploadQris)
+		r.Post("/upload/merchant-image", h.MerchantUploadMerchantImage)
+		r.Post("/upload/promo-banner", h.MerchantUploadPromoBanner)
+		r.Post("/upload/menu-image", h.MerchantUploadMenuImage)
+		r.Post("/upload/menu-image/confirm", h.MerchantMenuImageConfirm)
+		r.Post("/upload/delete-image", h.MerchantDeleteImage)
+		r.Post("/upload/presign", h.MerchantUploadPresign)
+		r.Post("/upload/confirm", h.MerchantUploadConfirm)
 	})
 
 	if wsServer != nil {

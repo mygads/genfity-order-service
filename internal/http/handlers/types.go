@@ -125,10 +125,15 @@ type OrderDetail struct {
 		Code     string `json:"code"`
 	} `json:"merchant"`
 	Payment *struct {
-		Status        *string    `json:"status"`
-		PaymentMethod *string    `json:"paymentMethod"`
-		Amount        *float64   `json:"amount"`
-		PaidAt        *time.Time `json:"paidAt"`
+		Status                  *string        `json:"status"`
+		PaymentMethod           *string        `json:"paymentMethod"`
+		Amount                  *float64       `json:"amount"`
+		PaidAt                  *time.Time     `json:"paidAt"`
+		CustomerPaidAt          *time.Time     `json:"customerPaidAt"`
+		CustomerProofUrl        *string        `json:"customerProofUrl"`
+		CustomerProofUploadedAt *time.Time     `json:"customerProofUploadedAt"`
+		CustomerPaymentNote     *string        `json:"customerPaymentNote"`
+		CustomerProofMeta       map[string]any `json:"customerProofMeta"`
 	} `json:"payment"`
 	Reservation *struct {
 		Status          string  `json:"status"`

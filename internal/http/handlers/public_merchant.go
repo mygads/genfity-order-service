@@ -238,6 +238,12 @@ func (h *Handler) PublicMerchant(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	paymentSettings, paymentAccounts, err := h.fetchPublicPaymentConfig(ctx, merchantID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve merchant")
+		return
+	}
+
 	payload := map[string]any{
 		"id":                          strconv.FormatInt(merchantID, 10),
 		"code":                        code,
@@ -296,6 +302,8 @@ func (h *Handler) PublicMerchant(w http.ResponseWriter, r *http.Request) {
 		"isScheduledOrderEnabled":     isScheduledOrderEnabled,
 		"isPerDayModeScheduleEnabled": isPerDayModeScheduleEnabled,
 		"openingHours":                openingHours,
+		"paymentSettings":             paymentSettings,
+		"paymentAccounts":             paymentAccounts,
 	}
 
 	response.JSON(w, http.StatusOK, map[string]any{

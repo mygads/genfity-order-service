@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"time"
 
@@ -30,7 +31,7 @@ func (h *Handler) PublicOrderDetail(w http.ResponseWriter, r *http.Request) {
 		  o.edited_at,
 		  m.name, m.currency, m.code,
 		  c.name,
-		  p.status, p.payment_method, p.amount, p.paid_at,
+		  p.status, p.payment_method, p.amount, p.paid_at, p.customer_paid_at, p.customer_proof_url, p.customer_proof_uploaded_at, p.customer_payment_note, p.customer_proof_meta,
 		  r.status, r.party_size, r.reservation_date, r.reservation_time, r.table_number
 		from orders o
 		join merchants m on m.id = o.merchant_id
@@ -51,6 +52,11 @@ func (h *Handler) PublicOrderDetail(w http.ResponseWriter, r *http.Request) {
 		pMethod          pgtype.Text
 		pAmount          pgtype.Numeric
 		pPaidAt          pgtype.Timestamptz
+		pCustomerPaidAt  pgtype.Timestamptz
+		pProofUrl        pgtype.Text
+		pProofUploadedAt pgtype.Timestamptz
+		pPaymentNote     pgtype.Text
+		pProofMeta       []byte
 		rStatus          pgtype.Text
 		rParty           pgtype.Int4
 		rDate            pgtype.Text
@@ -97,6 +103,11 @@ func (h *Handler) PublicOrderDetail(w http.ResponseWriter, r *http.Request) {
 		&pMethod,
 		&pAmount,
 		&pPaidAt,
+		&pCustomerPaidAt,
+		&pProofUrl,
+		&pProofUploadedAt,
+		&pPaymentNote,
+		&pProofMeta,
 		&rStatus,
 		&rParty,
 		&rDate,
@@ -139,16 +150,53 @@ func (h *Handler) PublicOrderDetail(w http.ResponseWriter, r *http.Request) {
 		if pPaidAt.Valid {
 			paidAtPtr = &paidAt
 		}
+		var customerPaidAtPtr *time.Time
+		if pCustomerPaidAt.Valid {
+			value := pCustomerPaidAt.Time
+			customerPaidAtPtr = &value
+		}
+		var proofUploadedAtPtr *time.Time
+		if pProofUploadedAt.Valid {
+			value := pProofUploadedAt.Time
+			proofUploadedAtPtr = &value
+		}
+		var proofUrlPtr *string
+		if pProofUrl.Valid {
+			value := pProofUrl.String
+			proofUrlPtr = &value
+		}
+		var paymentNotePtr *string
+		if pPaymentNote.Valid {
+			value := pPaymentNote.String
+			paymentNotePtr = &value
+		}
+		var proofMeta map[string]any
+		if len(pProofMeta) > 0 {
+			var parsed map[string]any
+			if err := json.Unmarshal(pProofMeta, &parsed); err == nil {
+				proofMeta = parsed
+			}
+		}
 		detail.Payment = &struct {
-			Status        *string    `json:"status"`
-			PaymentMethod *string    `json:"paymentMethod"`
-			Amount        *float64   `json:"amount"`
-			PaidAt        *time.Time `json:"paidAt"`
+			Status                  *string        `json:"status"`
+			PaymentMethod           *string        `json:"paymentMethod"`
+			Amount                  *float64       `json:"amount"`
+			PaidAt                  *time.Time     `json:"paidAt"`
+			CustomerPaidAt          *time.Time     `json:"customerPaidAt"`
+			CustomerProofUrl        *string        `json:"customerProofUrl"`
+			CustomerProofUploadedAt *time.Time     `json:"customerProofUploadedAt"`
+			CustomerPaymentNote     *string        `json:"customerPaymentNote"`
+			CustomerProofMeta       map[string]any `json:"customerProofMeta"`
 		}{
-			Status:        &status,
-			PaymentMethod: &method,
-			Amount:        &amount,
-			PaidAt:        paidAtPtr,
+			Status:                  &status,
+			PaymentMethod:           &method,
+			Amount:                  &amount,
+			PaidAt:                  paidAtPtr,
+			CustomerPaidAt:          customerPaidAtPtr,
+			CustomerProofUrl:        proofUrlPtr,
+			CustomerProofUploadedAt: proofUploadedAtPtr,
+			CustomerPaymentNote:     paymentNotePtr,
+			CustomerProofMeta:       proofMeta,
 		}
 	}
 
