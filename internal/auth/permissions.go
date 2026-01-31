@@ -22,12 +22,13 @@ const (
 	PermMerchantSettings StaffPermission = "merchant_settings"
 	PermStoreToggleOpen  StaffPermission = "store_toggle_open"
 	PermSubscription     StaffPermission = "subscription"
+	PermDriverDashboard  StaffPermission = "driver_dashboard"
 )
 
 var apiPermissionMap = map[string]StaffPermission{
 	"/api/merchant/orders":           PermOrders,
 	"/api/merchant/reservations":     PermOrders,
-	"/api/merchant/drivers":          PermOrders,
+	"/api/merchant/drivers":          PermDriverDashboard,
 	"/api/merchant/pos":              PermOrders,
 	"/api/merchant/customer-display": PermCustomerDisplay,
 	"/api/merchant/menu":             PermMenu,
@@ -48,12 +49,39 @@ var apiPermissionMap = map[string]StaffPermission{
 	"/api/merchant/analytics":        PermRevenue,
 	"/api/merchant/reports":          PermReports,
 	"/api/merchant/revenue":          PermRevenue,
+	"/api/merchant/branches":         PermMerchantSettings,
+	"/api/merchant/setup-progress":   PermMerchantSettings,
+	"/api/merchant/main":             PermMerchantSettings,
+	"/api/merchant/vouchers":         PermSubscription,
 	"PUT /api/merchant/profile":      PermMerchantSettings,
 	"/api/merchant/opening-hours":    PermMerchantSettings,
 	"/api/merchant/special-hours":    PermMerchantSettings,
 	"/api/merchant/mode-schedules":   PermMerchantSettings,
 	"/api/merchant/toggle-open":      PermStoreToggleOpen,
 	"/api/merchant/subscription":     PermSubscription,
+}
+
+func AllStaffPermissions() []string {
+	return []string{
+		string(PermOrders),
+		string(PermCustomerDisplay),
+		string(PermMenu),
+		string(PermMenuStock),
+		string(PermMenuBuilder),
+		string(PermCategories),
+		string(PermAddonCategories),
+		string(PermAddonItems),
+		string(PermMenuBooks),
+		string(PermSpecialPrices),
+		string(PermOrderVouchers),
+		string(PermCustomerFeedback),
+		string(PermReports),
+		string(PermRevenue),
+		string(PermMerchantSettings),
+		string(PermStoreToggleOpen),
+		string(PermSubscription),
+		string(PermDriverDashboard),
+	}
 }
 
 func GetPermissionForAPI(path string, method string) *StaffPermission {

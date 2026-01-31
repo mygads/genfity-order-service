@@ -24,6 +24,7 @@ type Config struct {
 	WSMerchantPollInterval   time.Duration
 	WSCustomerPollInterval   time.Duration
 	WSGroupOrderPollInterval time.Duration
+	NextApiBaseURL           string
 
 	ObjectStoreEndpoint        string
 	ObjectStoreRegion          string
@@ -52,6 +53,7 @@ func Load() Config {
 		WSMerchantPollInterval:   getEnvDuration("WS_MERCHANT_POLL_INTERVAL", 5*time.Second),
 		WSCustomerPollInterval:   getEnvDuration("WS_CUSTOMER_POLL_INTERVAL", 1*time.Second),
 		WSGroupOrderPollInterval: getEnvDuration("WS_GROUP_ORDER_POLL_INTERVAL", 5*time.Second),
+		NextApiBaseURL:           getEnvFirst([]string{"NEXT_API_BASE_URL", "NEXT_APP_BASE_URL", "NEXT_BASE_URL"}, "http://localhost:3000"),
 
 		// Object store (Cloudflare R2 / S3-compatible)
 		ObjectStoreEndpoint:        getEnvFirst([]string{"OBJECT_STORE_ENDPOINT", "R2_S3_ENDPOINT"}, ""),

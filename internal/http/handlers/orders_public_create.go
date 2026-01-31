@@ -273,6 +273,8 @@ func (h *Handler) PublicOrderCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	invalidateAnalyticsCacheForMerchant(merchant.ID)
+
 	detail, err := h.fetchPublicOrderDetailByID(ctx, orderID)
 	if err != nil {
 		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve order")

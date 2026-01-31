@@ -131,30 +131,13 @@ func (h *Handler) MerchantCustomerDisplayStatePut(w http.ResponseWriter, r *http
 			}
 		}
 
-		if sessionLocked && body.IsLocked == nil {
-			response.JSON(w, http.StatusOK, map[string]any{
-				"success": true,
-				"data": map[string]any{
-					"mode":      mode,
-					"isLocked":  existingLocked,
-					"payload":   payloadMap,
-					"updatedAt": time.Now().UTC(),
-				},
-				"message":    "Customer display locked",
-				"statusCode": 200,
-			})
-			return
-		}
-
 		staffName := fetchStaffName(ctx, h.DB, authCtx.UserID)
 		payloadObj := parsePayloadObject(body.Payload)
 		locked := false
 		if body.IsLocked != nil {
 			locked = *body.IsLocked
-		} else if existingSession != nil {
-			if v, ok := existingSession["isLocked"].(bool); ok {
-				locked = v
-			}
+		} else if sessionLocked {
+			locked = sessionLocked
 		}
 
 		sessions[sessionKey] = map[string]any{

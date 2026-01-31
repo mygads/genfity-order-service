@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -10,7 +13,9 @@ import (
 	"genfity-order-services/internal/utils"
 	"genfity-order-services/pkg/response"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func (h *Handler) MerchantReservationCount(w http.ResponseWriter, r *http.Request) {
@@ -61,6 +66,7 @@ func (h *Handler) MerchantReservationCount(w http.ResponseWriter, r *http.Reques
 			"pending": pending,
 			"active":  pending + acceptedUpcoming,
 		},
+		"statusCode": http.StatusOK,
 	})
 }
 
@@ -205,8 +211,13 @@ func (h *Handler) MerchantCustomerSearch(w http.ResponseWriter, r *http.Request)
 		"success": true,
 		"data":    enriched,
 		"pagination": map[string]any{
-			"take":   take,
-			"cursor": cursorParam,
+			"take": take,
+			"cursor": func() any {
+				if cursorParam == "" {
+					return nil
+				}
+				return cursorParam
+			}(),
 			"nextCursor": func() any {
 				if nextCursor == nil {
 					return nil
@@ -214,6 +225,131 @@ func (h *Handler) MerchantCustomerSearch(w http.ResponseWriter, r *http.Request)
 				return fmt.Sprint(*nextCursor)
 			}(),
 			"hasMore": hasMore,
+		},
+	})
+}
+
+func (h *Handler) MerchantDeletePinSet(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	authCtx, ok := middleware.GetAuthContext(ctx)
+	if !ok || authCtx.MerchantID == nil {
+		response.Error(w, http.StatusBadRequest, "MERCHANT_ID_REQUIRED", "Merchant ID is required")
+		return
+	}
+
+	var payload struct {
+		Pin string `json:"pin"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid request body")
+		return
+	}
+
+	pin := strings.TrimSpace(payload.Pin)
+	if !regexp.MustCompile(`^\d{4}$`).MatchString(pin) {
+		response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "PIN must be exactly 4 digits")
+		return
+	}
+
+	hashed, err := bcrypt.GenerateFromPassword([]byte(pin), 10)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to set PIN")
+		return
+	}
+
+	if _, err := h.DB.Exec(ctx, "update merchants set delete_pin = $1 where id = $2", string(hashed), *authCtx.MerchantID); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to set PIN")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "Delete PIN set successfully",
+	})
+}
+
+func (h *Handler) MerchantDeletePinRemove(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	authCtx, ok := middleware.GetAuthContext(ctx)
+	if !ok || authCtx.MerchantID == nil {
+		response.Error(w, http.StatusBadRequest, "MERCHANT_ID_REQUIRED", "Merchant ID is required")
+		return
+	}
+
+	if _, err := h.DB.Exec(ctx, "update merchants set delete_pin = null where id = $1", *authCtx.MerchantID); err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to remove PIN")
+		return
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"message": "Delete PIN removed successfully",
+	})
+}
+
+func (h *Handler) MerchantLockStatus(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	authCtx, ok := middleware.GetAuthContext(ctx)
+	if !ok || authCtx.MerchantID == nil {
+		response.Error(w, http.StatusBadRequest, "MERCHANT_ID_REQUIRED", "Merchant ID is required")
+		return
+	}
+
+	var merchantID int64
+	var merchantCode string
+	var merchantActive bool
+	if err := h.DB.QueryRow(ctx, `
+		select id, code, is_active
+		from merchants
+		where id = $1
+	`, *authCtx.MerchantID).Scan(&merchantID, &merchantCode, &merchantActive); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, http.StatusNotFound, "MERCHANT_NOT_FOUND", "Merchant not found")
+			return
+		}
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get merchant lock status")
+		return
+	}
+
+	subscriptionState, err := h.fetchSubscriptionState(ctx, *authCtx.MerchantID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to get merchant lock status")
+		return
+	}
+
+	reason := "NONE"
+	if !merchantActive {
+		reason = "INACTIVE"
+	} else if subscriptionState.Status == "SUSPENDED" || !subscriptionState.IsValid {
+		reason = "SUBSCRIPTION_SUSPENDED"
+	}
+
+	var subscriptionDaysRemaining any = nil
+	if subscriptionState.DaysRemaining != nil {
+		subscriptionDaysRemaining = *subscriptionState.DaysRemaining
+	}
+	var subscriptionSuspendReason any = nil
+	if subscriptionState.SuspendReason != nil {
+		subscriptionSuspendReason = *subscriptionState.SuspendReason
+	}
+
+	response.JSON(w, http.StatusOK, map[string]any{
+		"success": true,
+		"data": map[string]any{
+			"isLocked": reason != "NONE",
+			"reason":   reason,
+			"merchant": map[string]any{
+				"id":       fmt.Sprint(merchantID),
+				"code":     merchantCode,
+				"isActive": merchantActive,
+			},
+			"subscription": map[string]any{
+				"type":          subscriptionState.Type,
+				"status":        subscriptionState.Status,
+				"isValid":       subscriptionState.IsValid,
+				"daysRemaining": subscriptionDaysRemaining,
+				"suspendReason": subscriptionSuspendReason,
+			},
 		},
 	})
 }

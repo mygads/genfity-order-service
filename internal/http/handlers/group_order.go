@@ -452,7 +452,7 @@ func (h *Handler) PublicGroupOrderCreate(w http.ResponseWriter, r *http.Request)
 
 	var customerID *int64
 	if body.CustomerID != nil {
-		parsed, err := parseOptionalInt64(*body.CustomerID)
+		parsed, err := parseOptionalInt64String(*body.CustomerID)
 		if err != nil {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid customer ID")
 			return
@@ -599,7 +599,7 @@ func (h *Handler) PublicGroupOrderJoin(w http.ResponseWriter, r *http.Request) {
 
 	var customerID *int64
 	if body.CustomerID != nil {
-		parsed, err := parseOptionalInt64(*body.CustomerID)
+		parsed, err := parseOptionalInt64String(*body.CustomerID)
 		if err != nil {
 			response.Error(w, http.StatusBadRequest, "VALIDATION_ERROR", "Invalid customer ID")
 			return
@@ -1529,7 +1529,7 @@ func decodeGroupOrderCartItems(raw json.RawMessage) ([]groupOrderCartItem, error
 	return items, nil
 }
 
-func parseOptionalInt64(value string) (*int64, error) {
+func parseOptionalInt64String(value string) (*int64, error) {
 	trimmed := strings.TrimSpace(value)
 	if trimmed == "" {
 		return nil, nil

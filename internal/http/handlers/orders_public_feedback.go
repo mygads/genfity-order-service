@@ -218,6 +218,8 @@ func (h *Handler) PublicOrderFeedbackCreate(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	invalidateAnalyticsCacheForMerchant(merchantID)
+
 	response.JSON(w, http.StatusCreated, map[string]any{
 		"success": true,
 		"message": "Feedback submitted successfully",

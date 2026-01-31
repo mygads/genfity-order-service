@@ -75,7 +75,12 @@ func (h *Handler) MerchantPOSPayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	merchantCurrency, merchantTimezone := h.getMerchantCurrencyTimezone(ctx, *authCtx.MerchantID)
+	merchantCurrency, merchantTimezone, err := h.getMerchantCurrencyTimezone(ctx, *authCtx.MerchantID)
+	if err != nil {
+		h.Logger.Error("pos payment merchant lookup failed", zapError(err))
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to load merchant settings")
+		return
+	}
 	orderTotalBeforeDiscount := order.TotalAmount
 
 	var (

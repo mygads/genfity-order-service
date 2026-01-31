@@ -111,10 +111,10 @@ func (h *Handler) PublicOrderWaitTime(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	if scheduledAt != nil && scheduledAt.After(now) && (status == "PENDING" || status == "ACCEPTED") {
-		minutesUntil := clampInt(int(math.Round(minutesBetween(now, *scheduledAt))), 0, 60)
-		slack := clampInt(int(math.Round(float64(basePrep)*0.25)), 2, 15)
-		minMinutes := clampInt(minutesUntil-slack, 0, 60)
-		maxMinutes := clampInt(minutesUntil+slack, minMinutes, 60)
+		minutesUntil := clampWaitTimeInt(int(math.Round(minutesBetween(now, *scheduledAt))), 0, 60)
+		slack := clampWaitTimeInt(int(math.Round(float64(basePrep)*0.25)), 2, 15)
+		minMinutes := clampWaitTimeInt(minutesUntil-slack, 0, 60)
+		maxMinutes := clampWaitTimeInt(minutesUntil+slack, minMinutes, 60)
 		response.JSON(w, http.StatusOK, map[string]any{
 			"success": true,
 			"data": map[string]any{
@@ -138,13 +138,13 @@ func (h *Handler) PublicOrderWaitTime(w http.ResponseWriter, r *http.Request) {
 		multiplier = int(math.Max(1, math.Ceil(float64(queueAhead+1)*0.7)))
 	}
 
-	totalEstimate := clampInt(int(math.Round(float64(basePrep)*float64(multiplier))), 5, 60)
+	totalEstimate := clampWaitTimeInt(int(math.Round(float64(basePrep)*float64(multiplier))), 5, 60)
 	elapsedFrom := placedAt
 	if status == "IN_PROGRESS" {
 		elapsedFrom = updatedAt
 	}
 	elapsed := math.Max(0, minutesBetween(elapsedFrom, now))
-	remaining := clampInt(int(math.Round(float64(totalEstimate)-elapsed)), 0, 60)
+	remaining := clampWaitTimeInt(int(math.Round(float64(totalEstimate)-elapsed)), 0, 60)
 	if remaining <= 0 {
 		response.JSON(w, http.StatusOK, map[string]any{
 			"success": true,
@@ -162,8 +162,8 @@ func (h *Handler) PublicOrderWaitTime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	minMinutes := clampInt(int(math.Round(float64(remaining)*0.75)), 1, 60)
-	maxMinutes := clampInt(int(math.Round(float64(remaining)*1.25)), minMinutes, 60)
+	minMinutes := clampWaitTimeInt(int(math.Round(float64(remaining)*0.75)), 1, 60)
+	maxMinutes := clampWaitTimeInt(int(math.Round(float64(remaining)*1.25)), minMinutes, 60)
 
 	response.JSON(w, http.StatusOK, map[string]any{
 		"success": true,
@@ -251,7 +251,7 @@ func (h *Handler) computeBasePrepMinutes(ctx context.Context, merchantID int64, 
 		if len(samples)%2 == 0 {
 			med = int(math.Round(float64(samples[mid-1]+samples[mid]) / 2))
 		}
-		return clampInt(med, 5, 60)
+		return clampWaitTimeInt(med, 5, 60)
 	}
 
 	return 20
@@ -282,7 +282,7 @@ func minutesBetween(a time.Time, b time.Time) float64 {
 	return b.Sub(a).Minutes()
 }
 
-func clampInt(value int, min int, max int) int {
+func clampWaitTimeInt(value int, min int, max int) int {
 	if value < min {
 		return min
 	}

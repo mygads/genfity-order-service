@@ -53,7 +53,7 @@ func (h *Handler) MerchantActiveOrders(w http.ResponseWriter, r *http.Request) {
 		where o.merchant_id = $1
 		  and o.status in ('PENDING', 'ACCEPTED', 'IN_PROGRESS', 'READY')
 		group by o.id, p.id, r.id, c.id, d.id
-		order by o.placed_at desc
+		order by o.placed_at asc
 	`
 
 	rows, err := h.DB.Query(ctx, query, *authCtx.MerchantID)

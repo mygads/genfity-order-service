@@ -243,14 +243,12 @@ func (h *Handler) PublicMerchantStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscription status
-	var subscriptionStatus string
-	if err := h.DB.QueryRow(ctx, `
-		select status
-		from merchant_subscriptions
-		where merchant_id = $1
-	`, merchantID).Scan(&subscriptionStatus); err != nil {
-		subscriptionStatus = "SUSPENDED"
+	subscriptionState, err := h.fetchSubscriptionState(ctx, merchantID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve merchant status")
+		return
 	}
+	subscriptionStatus := subscriptionState.Status
 
 	payload := map[string]any{
 		"isOpen":                      isOpen,

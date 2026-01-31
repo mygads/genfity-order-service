@@ -134,6 +134,8 @@ func (h *Handler) MerchantPOSCreateOrder(w http.ResponseWriter, r *http.Request)
 		h.decrementPOSStock(ctx, item.MenuID, item.Quantity)
 	}
 
+	invalidateAnalyticsCacheForMerchant(merchant.ID)
+
 	response.JSON(w, http.StatusCreated, map[string]any{
 		"success":    true,
 		"data":       createdOrder,

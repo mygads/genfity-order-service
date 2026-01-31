@@ -330,13 +330,6 @@ func timezoneOrDefault(timezone string) string {
 	return timezone
 }
 
-func textPtr(value pgtype.Text) *string {
-	if value.Valid {
-		return &value.String
-	}
-	return nil
-}
-
 func currentTimeHHMMInTZ(timezone string) string {
 	loc, err := time.LoadLocation(timezone)
 	if err != nil || timezone == "" {

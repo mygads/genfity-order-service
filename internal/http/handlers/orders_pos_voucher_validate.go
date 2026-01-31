@@ -167,7 +167,11 @@ func (h *Handler) computeVoucherForOrder(ctx context.Context, merchantID int64, 
 		return nil, voucher.ValidationError(voucher.ErrVoucherNotFound, "Order not found", nil)
 	}
 
-	merchantCurrency, merchantTimezone := h.getMerchantCurrencyTimezone(ctx, merchantID)
+	merchantCurrency, merchantTimezone, err := h.getMerchantCurrencyTimezone(ctx, merchantID)
+	if err != nil {
+		h.Logger.Error("voucher validate merchant lookup failed", zapError(err))
+		return nil, voucher.ValidationError(voucher.ErrVoucherNotFound, "Order not found", nil)
+	}
 
 	params := base
 	params.OrderType = orderType
@@ -178,23 +182,6 @@ func (h *Handler) computeVoucherForOrder(ctx context.Context, merchantID int64, 
 	params.ExcludeOrderIDFromUsage = &orderID
 
 	return voucher.ComputeVoucherDiscount(ctx, h.DB, params)
-}
-
-func (h *Handler) getMerchantCurrencyTimezone(ctx context.Context, merchantID int64) (string, string) {
-	var (
-		currency pgtype.Text
-		timezone pgtype.Text
-	)
-	_ = h.DB.QueryRow(ctx, `select currency, timezone from merchants where id = $1`, merchantID).Scan(&currency, &timezone)
-	cur := "AUD"
-	if currency.Valid && currency.String != "" {
-		cur = currency.String
-	}
-	zone := "Australia/Sydney"
-	if timezone.Valid && timezone.String != "" {
-		zone = timezone.String
-	}
-	return cur, zone
 }
 
 func writeVoucherError(w http.ResponseWriter, err *voucher.Error) {

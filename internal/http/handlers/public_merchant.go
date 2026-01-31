@@ -211,16 +211,20 @@ func (h *Handler) PublicMerchant(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Subscription status
-	var subscriptionStatus string
-	var subscriptionSuspendReason pgtype.Text
-	var subscriptionType pgtype.Text
-	if err := h.DB.QueryRow(ctx, `
-		select status, suspend_reason, type
-		from merchant_subscriptions
-		where merchant_id = $1
-	`, merchantID).Scan(&subscriptionStatus, &subscriptionSuspendReason, &subscriptionType); err != nil {
-		subscriptionStatus = "SUSPENDED"
-		subscriptionSuspendReason = pgtype.Text{String: "No active subscription", Valid: true}
+	subscriptionState, err := h.fetchSubscriptionState(ctx, merchantID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to retrieve merchant")
+		return
+	}
+
+	subscriptionStatus := subscriptionState.Status
+	var subscriptionSuspendReason any = nil
+	if subscriptionState.SuspendReason != nil {
+		subscriptionSuspendReason = *subscriptionState.SuspendReason
+	}
+	var subscriptionType any = nil
+	if subscriptionState.Type != "" && subscriptionState.Type != "NONE" {
+		subscriptionType = subscriptionState.Type
 	}
 
 	// Feature flags: customer vouchers enabled
@@ -263,8 +267,8 @@ func (h *Handler) PublicMerchant(w http.ResponseWriter, r *http.Request) {
 		"isOpen":                      isOpen,
 		"isManualOverride":            isManualOverride,
 		"subscriptionStatus":          subscriptionStatus,
-		"subscriptionSuspendReason":   nullIfEmptyText(subscriptionSuspendReason),
-		"subscriptionType":            nullIfEmptyText(subscriptionType),
+		"subscriptionSuspendReason":   subscriptionSuspendReason,
+		"subscriptionType":            subscriptionType,
 		"isDineInEnabled":             isDineInEnabled,
 		"isTakeawayEnabled":           isTakeawayEnabled,
 		"requireTableNumberForDineIn": requireTableNumberForDineIn,

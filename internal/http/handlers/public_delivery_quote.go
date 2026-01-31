@@ -19,7 +19,7 @@ type deliveryQuoteRequest struct {
 	Longitude float64 `json:"longitude"`
 }
 
-type deliveryZonePoint struct {
+type deliveryQuoteZonePoint struct {
 	Lat float64 `json:"lat"`
 	Lng float64 `json:"lng"`
 }
@@ -198,7 +198,7 @@ func (h *Handler) validateDeliveryZones(ctx context.Context, merchantID int64, m
 			if len(zone.Polygon) == 0 {
 				continue
 			}
-			var polygon []deliveryZonePoint
+			var polygon []deliveryQuoteZonePoint
 			if err := json.Unmarshal(zone.Polygon, &polygon); err != nil {
 				continue
 			}
@@ -232,7 +232,7 @@ func haversineDistanceKm(lat1, lng1, lat2, lng2 float64) float64 {
 	return earthRadius * c
 }
 
-func pointInPolygon(lat, lng float64, polygon []deliveryZonePoint) bool {
+func pointInPolygon(lat, lng float64, polygon []deliveryQuoteZonePoint) bool {
 	inside := false
 	j := len(polygon) - 1
 	for i := 0; i < len(polygon); i++ {
