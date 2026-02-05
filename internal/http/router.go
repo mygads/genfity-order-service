@@ -97,6 +97,11 @@ func NewRouter(db *pgxpool.Pool, logger *zap.Logger, cfg config.Config, queueCli
 		r.Get("/merchants/{code}/menus/{id}/addons", h.PublicMerchantMenuAddons)
 		r.Get("/merchants/{code}/menus/search", h.PublicMerchantMenuSearch)
 		r.Get("/merchants/{code}/recommendations", h.PublicMerchantRecommendations)
+		// Push notifications
+		r.Get("/push/subscribe", h.PublicPushGetVAPIDKey)
+		r.Post("/push/subscribe", h.PublicPushSubscribe)
+		r.Patch("/push/subscribe", h.PublicPushAddOrder)
+		r.Delete("/push/subscribe", h.PublicPushUnsubscribe)
 	})
 
 	r.Route("/api/merchant", func(r chi.Router) {
