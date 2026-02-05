@@ -8,7 +8,7 @@ RUN CGO_ENABLED=1 go build -ldflags="-s -w" -o order-services .
 
 FROM alpine:3.19
 WORKDIR /app
-RUN apk --no-cache add ca-certificates wget libheif
+RUN apk --no-cache add ca-certificates wget libheif tzdata
 COPY --from=build /app/order-services /app/order-services
 EXPOSE 8086
 ENV HTTP_ADDR=:8086
